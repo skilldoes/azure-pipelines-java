@@ -1,0 +1,59 @@
+name: $(Date:yyyyMMdd)$(Rev:.r)
+
+trigger:
+  branches:
+    include:
+      - feature/*
+      - master
+      - main
+
+variables:
+
+  # Agent VM image name
+  vmImageName: 'ubuntu-latest'
+
+stages:
+- stage: Build
+  displayName: Build stage
+  jobs:
+  - job: MavenPackageAndPublishArtifacts
+    displayName: Maven Package and Publish Artifacts
+    pool:
+      vmImage: $(vmImageName)
+
+    steps:
+    - task: Maven@3
+      displayName: 'Maven Package'
+      inputs:
+        mavenPomFile: 'pom.xml'
+        testResultsFiles: '**/surefire-reports/TEST-*.xml'
+
+    - task: CopyFiles@2
+      displayName: 'Copy Files to artifact staging directory'
+      inputs:
+        SourceFolder: '$(System.DefaultWorkingDirectory)'
+        Contents: '**/surefire-reports/*'
+        TargetFolder: $(Build.ArtifactStagingDirectory)
+    - bash: |
+        pwd
+        ls -lrt
+        echo "$(Build.ArtifactStagingDirectory)"
+        ls -lrt $(Build.ArtifactStagingDirectory)
+        ls -lrt target/site/jacoco
+      displayName: 'List Files'
+    - task: PublishCodeCoverageResults@1
+      displayName: 'Publish Code Coverage'
+      inputs:
+        codeCoverageTool: jaCoCo
+        summaryFileLocation: '$(Build.ArtifactStagingDirectory)/target/site/jacoco/jacoco.xml'
+        reportDirectory: '$(Build.ArtifactStagingDirectory)/target/site/jacoco'
+        additionalCodeCoverageFiles: '$(Build.ArtifactStagingDirectory)/target/jacoco.exec'
+        failIfCoverageEmpty: false
+    - task: CopyFiles@2
+      displayName: 'Copy Files to artifact staging directory'
+      inputs:
+        SourceFolder: '$(System.DefaultWorkingDirectory)'
+        Contents: '**/target/*.?(war|jar)'
+        TargetFolder: $(Build.ArtifactStagingDirectory)
+    - upload: $(Build.ArtifactStagingDirectory)
+      artifact: drop
