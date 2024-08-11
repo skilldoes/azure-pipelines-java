@@ -1,0 +1,78 @@
+name: $(Date:yyyyMMdd)$(Rev:.r)
+
+trigger:
+  branches:
+    include:
+      - feature/*
+      - master
+      - main
+
+variables:
+
+  # Agent VM image name
+  vmImageName: 'ubuntu-latest'
+
+stages:
+- stage: Build
+  displayName: Build stage
+  jobs:
+  - job: MavenPackageAndPublishArtifacts
+    displayName: Maven Package and Publish Artifacts
+    pool:
+      vmImage: $(vmImageName)
+
+    steps:
+    - task: Maven@3
+      displayName: 'Maven Package'
+      inputs:
+        mavenPomFile: 'pom.xml'
+        testResultsFiles: '**/surefire-reports/TEST-*.xml'
+
+    - task: CopyFiles@2
+      displayName: 'Copy Files to artifact staging directory'
+      inputs:
+        SourceFolder: '$(System.DefaultWorkingDirectory)'
+        Contents: '**/surefire-reports/*'
+        TargetFolder: $(Build.ArtifactStagingDirectory)
+    - bash: |
+        pwd
+        ls -lrt
+        echo "$(Build.ArtifactStagingDirectory)"
+        ls -lrt $(Build.ArtifactStagingDirectory)
+        ls -lrt target/site/jacoco
+      displayName: 'List Files'
+    - task: PublishCodeCoverageResults@1
+      displayName: 'Publish Code Coverage'
+      inputs:
+        codeCoverageTool: jaCoCo
+        summaryFileLocation: '$(Build.ArtifactStagingDirectory)/target/site/jacoco/jacoco.xml'
+        reportDirectory: '$(Build.ArtifactStagingDirectory)/target/site/jacoco'
+        additionalCodeCoverageFiles: '$(Build.ArtifactStagingDirectory)/target/jacoco.exec'
+        failIfCoverageEmpty: false
+    - task: SonarSource.sonarqube.15B84CA1-B62F-4A2A-A403-89B77A063157.SonarQubePrepare@6
+      inputs:
+        SonarQube: 'SonarQubeServerTest'
+        scannerMode: 'CLI'
+        extraProperties: |
+          sonar.projectKey=sample-java-app
+          sonar.projectName=sample-java-app
+          sonar.analysis.mode=publish
+          sonar.sources=$(Build.Repository.LocalPath)/src/main/java
+          sonar.tests=$(Build.Repository.LocalPath)/src/test/java
+          sonar.coverage.jacoco.xmlReportPaths=$(Build.Repository.LocalPath)/target/site/jacoco/jacoco.xml
+          sonar.java.binaries=$(Build.Repository.LocalPath)/target/classes
+      displayName: 'SonarQube Prepare'
+    - task: SonarQubeAnalyze@6
+      displayName: 'SonarQube Analysis and Publish to SonarQube Server'
+    - task: SonarQubePublish@6
+      inputs:
+        pollingTimeoutSec: '300'
+      displayName: 'SonarQube Publish Quality Gate Results to Azure DevOps'
+    - task: CopyFiles@2
+      displayName: 'Copy Files to artifact staging directory'
+      inputs:
+        SourceFolder: '$(System.DefaultWorkingDirectory)'
+        Contents: '**/target/*.?(war|jar)'
+        TargetFolder: $(Build.ArtifactStagingDirectory)
+    - upload: $(Build.ArtifactStagingDirectory)
+      artifact: drop
