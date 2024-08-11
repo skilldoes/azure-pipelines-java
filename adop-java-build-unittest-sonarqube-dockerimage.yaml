@@ -91,7 +91,14 @@ stages:
       inputs:
         script: |
           imageName=slbcentraldev.azurecr.io/java-service:$(Build.BuildNumber)
-          trivy image  $imageName
+          trivy image --severity HIGH,CRITICAL --format template --template "@template/junit.tpl" -o junit-report-high-crit.xml $imageName
+    - task : PublishTestResults@2
+      inputs: 
+        testResultsFormat: 'JUnit'
+        testResultsFiles: '**/junit-report-high-crit.xml'
+        mergeTestResults: true
+        failTaskOnFailedTests: true
+        testRunTitle: 'Trivy'
     - script: |
         set -e
         az login --service-principal -u $(AZ_APP_ID) -p $(AZ_PASSWORD) --tenant $(AZ_TENANT_ID)  ## Secrest from variable group
