@@ -8,18 +8,12 @@ trigger:
       - main
 
 variables:
-
-  # Azure Resource Manager connection created during pipeline creation
-  #azureSubscription: 'adaa8ff0-8a2a-4d1a-bd3a-5e8ca98427d0'
-
-  # Web app name
-  #webAppName: 'javawebapp0001'
-
-  # Environment name
-  #environmentName: 'javawebapp0001'
-
-  # Agent VM image name
-  vmImageName: 'ubuntu-latest'
+- group: ODF_BUILD_VARIABLE_GROUP
+- group: AZURE_BUILD_VARIABLE
+- name: vmImageName
+  value: 'ubuntu-latest'
+- name: trivyVersion
+  value: '0.54.1'
 
 stages:
 - stage: Build
@@ -84,10 +78,20 @@ stages:
         image=$(ACR_NAME).azurecr.io/java-service:$(Build.BuildNumber)
         docker build --no-cache -t $image . -f $(Build.SourcesDirectory)/Dockerfile
       displayName: 'Docker Image Build'
-    - script: |
-        set -e
-        echo "To be added"
+    - task: CmdLine@2
+      displayName: "Download and install Trivy"
+      inputs:
+        script: |
+          sudo apt-get install rpm
+          wget https://github.com/aquasecurity/trivy/releases/download/v$(trivyVersion)/trivy_$(trivyVersion)_Linux-64bit.deb
+          sudo dpkg -i trivy_$(trivyVersion)_Linux-64bit.deb
+          trivy -v
+    - task: CmdLine@2
       displayName: 'Docker Image Scan'
+      inputs:
+        script: |
+          imageName=slbcentraldev.azurecr.io/java-service:$(Build.BuildNumber)
+          trivy image  $imageName
     - script: |
         set -e
         az login --service-principal -u $(AZ_APP_ID) -p $(AZ_PASSWORD) --tenant $(AZ_TENANT_ID)  ## Secrest from variable group
